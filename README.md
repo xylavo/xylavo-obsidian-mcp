@@ -39,17 +39,11 @@ Obsidian Vault를 AI 어시스턴트에서 직접 활용할 수 있게 해주는
 - Python 3.11 이상
 - Obsidian Vault (로컬)
 
-### 패키지 설치
+### 설치
 
 ```bash
-pip install obsidian-mcp
-```
-
-또는 소스에서 직접 설치:
-
-```bash
-git clone https://github.com/<your-username>/obsidian-mcp.git
-cd obsidian-mcp
+git clone https://github.com/xylavo/xylavo-obsidian-mcp.git
+cd xylavo-obsidian-mcp
 pip install -e .
 ```
 
@@ -132,8 +126,8 @@ MCP 클라이언트(예: Claude Desktop)에서 연결 후:
 ### 개발 환경 설정
 
 ```bash
-git clone https://github.com/<your-username>/obsidian-mcp.git
-cd obsidian-mcp
+git clone https://github.com/xylavo/xylavo-obsidian-mcp.git
+cd xylavo-obsidian-mcp
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
