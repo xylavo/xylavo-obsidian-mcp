@@ -16,7 +16,12 @@ from obsidian_mcp.utils.frontmatter import (
     serialize_note,
     set_tags_in_metadata,
 )
-from obsidian_mcp.utils.markdown import extract_all_links, extract_inline_tags
+from obsidian_mcp.utils.markdown import (
+    extract_all_links,
+    extract_inline_tags,
+    parse_sections,
+    reconstruct_body,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +149,53 @@ class ObsidianVault:
         rel = self._relative(fp)
         fp.unlink()
         return {"path": rel, "deleted": True}
+
+    # ── 섹션 ──────────────────────────────────────────────
+
+    def _match_heading(self, sections: list[dict], heading: str) -> dict | None:
+        """헤딩 문자열로 섹션을 찾는다. # prefix 유무 모두 허용."""
+        heading_stripped = heading.lstrip("# ").strip()
+        for sec in sections:
+            if sec["heading"] is None:
+                continue
+            sec_stripped = sec["heading"].lstrip("# ").strip()
+            if sec_stripped == heading_stripped:
+                return sec
+        return None
+
+    def list_note_sections(self, note_path: str) -> list[dict]:
+        """노트의 섹션 목록(index, heading, level)을 반환한다."""
+        data = self.read_note(note_path)
+        sections = parse_sections(data["content"])
+        return [
+            {"index": s["index"], "heading": s["heading"], "level": s["level"]}
+            for s in sections
+        ]
+
+    def read_note_section(self, note_path: str, heading: str) -> dict:
+        """특정 헤딩의 섹션 내용을 반환한다."""
+        data = self.read_note(note_path)
+        sections = parse_sections(data["content"])
+        sec = self._match_heading(sections, heading)
+        if sec is None:
+            raise VaultError(f"섹션을 찾을 수 없습니다: {heading}")
+        return {"heading": sec["heading"], "content": sec["content"]}
+
+    def update_note_section(self, note_path: str, heading: str, content: str) -> dict:
+        """특정 헤딩의 섹션 내용만 교체한다. 헤딩 자체는 유지."""
+        fp = self._resolve(note_path)
+        if not fp.is_file():
+            raise VaultError(f"노트를 찾을 수 없습니다: {note_path}")
+        raw = fp.read_text(encoding="utf-8")
+        meta, body = parse_note(raw)
+        sections = parse_sections(body)
+        sec = self._match_heading(sections, heading)
+        if sec is None:
+            raise VaultError(f"섹션을 찾을 수 없습니다: {heading}")
+        sections[sec["index"]]["content"] = content
+        new_body = reconstruct_body(sections)
+        fp.write_text(serialize_note(meta, new_body), encoding="utf-8")
+        return {"path": self._relative(fp), "section_updated": True}
 
     # ── 검색 ──────────────────────────────────────────────
 
