@@ -8,13 +8,17 @@ Obsidian Vault를 AI 어시스턴트에서 직접 활용할 수 있게 해주는
 ### 노트 관리 (CRUD)
 - **노트 읽기** — 마크다운 노트 내용 및 프론트매터 조회
 - **노트 생성** — 새 노트 생성 (템플릿 적용 가능)
-- **노트 수정** — 기존 노트 내용 수정, 내용 추가(append/prepend)
+- **노트 수정** — 기존 노트 내용 수정, 내용 추가(append)
 - **노트 삭제** — 노트 삭제
+
+### 섹션 편집
+- **섹션 목록 조회** — 노트 내 헤딩(섹션) 목록 조회
+- **섹션 읽기** — 특정 헤딩의 내용만 읽기
+- **섹션 수정** — 특정 헤딩의 내용만 교체 (헤딩 유지)
 
 ### 검색
 - **전문 검색** — Vault 내 노트 전문(full-text) 검색
 - **태그 검색** — 특정 태그가 달린 노트 목록 조회
-- **프론트매터 검색** — 메타데이터 기반 필터링
 
 ### 태그 관리
 - **태그 목록 조회** — Vault 전체 태그 목록 및 사용 빈도
@@ -29,7 +33,7 @@ Obsidian Vault를 AI 어시스턴트에서 직접 활용할 수 있게 해주는
 - **템플릿 목록 조회** — 사용 가능한 템플릿 목록
 - **템플릿 적용** — 노트 생성 시 템플릿 기반으로 생성
 
-### Vault 정보
+### Vault 정보 (리소스)
 - **Vault 구조 조회** — 폴더 구조 및 파일 목록
 - **Vault 통계** — 총 노트 수, 태그 수, 링크 수 등 통계
 
@@ -84,6 +88,9 @@ Claude Desktop (`claude_desktop_config.json`):
 | `update_note` | 노트 내용 수정 |
 | `append_to_note` | 노트 끝에 내용 추가 |
 | `delete_note` | 노트 삭제 |
+| `list_note_sections` | 노트의 섹션(헤딩) 목록 조회 |
+| `read_note_section` | 특정 섹션 내용 읽기 |
+| `update_note_section` | 특정 섹션 내용 수정 |
 | `search_notes` | 전문 검색 |
 | `search_by_tag` | 태그 기반 검색 |
 | `list_tags` | 태그 목록 조회 |
@@ -94,8 +101,6 @@ Claude Desktop (`claude_desktop_config.json`):
 | `get_graph` | 연결 그래프 조회 |
 | `list_templates` | 템플릿 목록 |
 | `create_from_template` | 템플릿으로 노트 생성 |
-| `get_vault_structure` | Vault 폴더 구조 조회 |
-| `get_vault_stats` | Vault 통계 조회 |
 
 ## 제공 리소스 (Resources)
 
@@ -163,6 +168,12 @@ obsidian_mcp/
     ├── frontmatter.py   # 프론트매터 파싱
     └── markdown.py      # 마크다운 파싱 유틸리티
 ```
+
+## TODO
+
+- [ ] 프론트매터 검색 — 메타데이터 기반 필터링
+- [ ] `get_vault_structure` 도구 등록 — 현재 리소스로만 제공
+- [ ] `get_vault_stats` 도구 등록 — 현재 리소스로만 제공
 
 ## 라이선스
 
