@@ -3,7 +3,8 @@
     "allow": [
       "mcp__obsidian__search_notes",
       "mcp__obsidian__list_tags",
-      "mcp__obsidian__read_note"
+      "mcp__obsidian__read_note",
+      "mcp__obsidian__list_templates"
     ]
   }
 }

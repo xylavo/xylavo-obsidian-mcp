@@ -24,15 +24,28 @@ def register(mcp: FastMCP, vault: ObsidianVault) -> None:
         note_path: str,
         content: str = "",
         metadata: dict | None = None,
+        template_name: str | None = None,
+        variables: dict | None = None,
     ) -> dict:
-        """새 노트를 생성합니다. 이 도구를 사용하기 전에 먼저 list_templates로 적절한 템플릿이 있는지 확인하고, 템플릿이 있다면 create_from_template를 대신 사용하세요.
+        """새 노트를 생성합니다. 사용 가능한 템플릿이 있으면 template_name을 전달하세요.
+
+        폴더-템플릿 매핑이 설정된 경우, content와 template_name이 모두 비어 있으면
+        해당 폴더에 매핑된 템플릿이 자동으로 적용됩니다.
 
         Args:
             note_path: 생성할 노트 경로
             content: 노트 본문 내용
             metadata: 프론트매터 메타데이터 (선택)
+            template_name: 사용할 템플릿 이름 (선택, 예: "daily.md")
+            variables: 템플릿 변수 (선택, 예: {"title": "회의록", "date": "2025-01-01"})
         """
-        return vault.create_note(note_path, content=content, metadata=metadata)
+        return vault.create_note(
+            note_path,
+            content=content,
+            metadata=metadata,
+            template_name=template_name,
+            variables=variables,
+        )
 
     @mcp.tool()
     async def update_note(
@@ -51,7 +64,7 @@ def register(mcp: FastMCP, vault: ObsidianVault) -> None:
 
     @mcp.tool()
     async def append_to_note(note_path: str, content: str) -> dict:
-        """노트 끝에 내용을 추가합니다.
+        """노트 끝에 내용을 추가합니다. 긴 노트를 작성할 때 create_note로 구조를 잡은 뒤 이 도구로 섹션별로 나눠서 추가하세요.
 
         Args:
             note_path: 대상 노트 경로

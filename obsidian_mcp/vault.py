@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -72,6 +73,122 @@ class ObsidianVault:
         rel = self._relative(path)
         return any(rel.startswith(pat) for pat in self.exclude_patterns)
 
+    # ── 설정 파일 (.obsidian-mcp.json) ─────────────────────
+
+    def _config_path(self) -> Path:
+        return self.root / ".obsidian-mcp.json"
+
+    def _load_config(self) -> dict:
+        """설정 파일을 읽는다. 없으면 빈 dict를 반환한다."""
+        cp = self._config_path()
+        if not cp.is_file():
+            return {}
+        return json.loads(cp.read_text(encoding="utf-8"))
+
+    def _save_config(self, config: dict) -> None:
+        """설정 파일을 저장한다."""
+        cp = self._config_path()
+        cp.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _match_folder_pattern(self, folder: str, pattern: str) -> bool:
+        """폴더 경로가 와일드카드 패턴에 매칭되는지 확인한다.
+
+        * : 단일 경로 세그먼트 매칭 (예: 프로젝트/*/회의록)
+        ** : 0개 이상의 경로 세그먼트 매칭 (예: 프로젝트/**/회의록)
+        """
+        return self._match_parts(folder.split("/"), pattern.split("/"))
+
+    def _match_parts(
+        self, folder_parts: list[str], pattern_parts: list[str],
+    ) -> bool:
+        """경로 세그먼트를 재귀적으로 매칭한다."""
+        if not pattern_parts:
+            return not folder_parts
+        if pattern_parts[0] == "**":
+            rest = pattern_parts[1:]
+            for i in range(len(folder_parts) + 1):
+                if self._match_parts(folder_parts[i:], rest):
+                    return True
+            return False
+        if not folder_parts:
+            return False
+        if fnmatch.fnmatch(folder_parts[0], pattern_parts[0]):
+            return self._match_parts(folder_parts[1:], pattern_parts[1:])
+        return False
+
+    def _pattern_specificity(self, pattern: str) -> tuple[int, int]:
+        """패턴의 구체성을 반환한다. (총 세그먼트 수, 리터럴 세그먼트 수)"""
+        parts = pattern.split("/")
+        total = len(parts)
+        literal = sum(1 for p in parts if "*" not in p and "?" not in p)
+        return (total, literal)
+
+    def get_folder_template(self, folder: str) -> str | None:
+        """폴더에 매핑된 템플릿을 반환한다.
+
+        우선순위: 정확한 매칭 → 와일드카드 패턴 (구체적인 순) → 상위 폴더.
+        """
+        config = self._load_config()
+        mapping = config.get("folder_templates", {})
+        # 폴더 경로 정규화 (백슬래시 → 슬래시, 끝 슬래시 제거)
+        folder = folder.replace("\\", "/").strip("/")
+
+        # 1. 정확한 매칭
+        if folder in mapping:
+            return mapping[folder]
+
+        # 2. 와일드카드 패턴 매칭 (가장 구체적인 패턴 우선)
+        wildcard_matches: list[tuple[tuple[int, int], str]] = []
+        for pattern, template in mapping.items():
+            if "*" in pattern or "?" in pattern:
+                if self._match_folder_pattern(folder, pattern):
+                    specificity = self._pattern_specificity(pattern)
+                    wildcard_matches.append((specificity, template))
+        if wildcard_matches:
+            wildcard_matches.sort(reverse=True)
+            return wildcard_matches[0][1]
+
+        # 3. 상위 폴더 순으로 탐색
+        parts = folder.split("/")
+        for i in range(len(parts) - 1, 0, -1):
+            parent = "/".join(parts[:i])
+            if parent in mapping:
+                return mapping[parent]
+        return None
+
+    def set_folder_template(self, folder: str, template_name: str) -> dict:
+        """폴더-템플릿 매핑을 설정한다."""
+        # 템플릿 존재 확인
+        tpl_root = self._template_root()
+        tpl_name = template_name if template_name.endswith(".md") else template_name + ".md"
+        tpl_file = (tpl_root / tpl_name).resolve()
+        if not tpl_file.is_file():
+            raise VaultError(f"템플릿을 찾을 수 없습니다: {template_name}")
+        folder = folder.replace("\\", "/").strip("/")
+        config = self._load_config()
+        if "folder_templates" not in config:
+            config["folder_templates"] = {}
+        config["folder_templates"][folder] = template_name
+        self._save_config(config)
+        return {"folder": folder, "template": template_name, "set": True}
+
+    def remove_folder_template(self, folder: str) -> dict:
+        """폴더-템플릿 매핑을 제거한다."""
+        folder = folder.replace("\\", "/").strip("/")
+        config = self._load_config()
+        mapping = config.get("folder_templates", {})
+        if folder not in mapping:
+            raise VaultError(f"폴더 매핑이 존재하지 않습니다: {folder}")
+        removed_template = mapping.pop(folder)
+        config["folder_templates"] = mapping
+        self._save_config(config)
+        return {"folder": folder, "template": removed_template, "removed": True}
+
+    def list_folder_templates(self) -> dict[str, str]:
+        """전체 폴더-템플릿 매핑을 반환한다."""
+        config = self._load_config()
+        return config.get("folder_templates", {})
+
     # ── 노트 목록 ─────────────────────────────────────────
 
     def list_notes(self) -> list[str]:
@@ -103,15 +220,47 @@ class ObsidianVault:
         note_path: str,
         content: str = "",
         metadata: dict | None = None,
+        template_name: str | None = None,
+        variables: dict | None = None,
     ) -> dict:
-        """새 노트를 생성한다."""
+        """새 노트를 생성한다.
+
+        우선순위: template_name 직접 지정 > 폴더 매핑 템플릿 > content/metadata 사용.
+        content가 비어 있고 template_name도 없으면 폴더 매핑을 확인한다.
+        """
         fp = self._resolve(note_path)
         if fp.exists():
             raise VaultError(f"노트가 이미 존재합니다: {note_path}")
+
+        # 템플릿 결정: 직접 지정 > 폴더 매핑 (content가 비어 있을 때만)
+        effective_template = template_name
+        if effective_template is None and not content and metadata is None:
+            folder = fp.relative_to(self.root).parent.as_posix()
+            if folder and folder != ".":
+                effective_template = self.get_folder_template(folder)
+
+        # 템플릿 적용
+        if effective_template:
+            tpl_root = self._template_root()
+            tpl_name = effective_template if effective_template.endswith(".md") else effective_template + ".md"
+            tpl_file = (tpl_root / tpl_name).resolve()
+            if not tpl_file.is_file():
+                raise VaultError(f"템플릿을 찾을 수 없습니다: {effective_template}")
+            tpl_content = tpl_file.read_text(encoding="utf-8")
+            if variables:
+                for key, value in variables.items():
+                    tpl_content = tpl_content.replace("{{" + key + "}}", str(value))
+            tpl_meta, tpl_body = parse_note(tpl_content)
+            content = tpl_body
+            metadata = tpl_meta
+
         fp.parent.mkdir(parents=True, exist_ok=True)
         text = serialize_note(metadata or {}, content)
         fp.write_text(text, encoding="utf-8")
-        return {"path": self._relative(fp), "created": True}
+        result = {"path": self._relative(fp), "created": True}
+        if effective_template:
+            result["template_applied"] = effective_template
+        return result
 
     def update_note(
         self,
@@ -393,22 +542,9 @@ class ObsidianVault:
         variables: dict | None = None,
     ) -> dict:
         """템플릿을 기반으로 새 노트를 생성한다."""
-        tpl_root = self._template_root()
-        if not template_name.endswith(".md"):
-            template_name += ".md"
-        tpl_file = (tpl_root / template_name).resolve()
-        if not tpl_file.is_file():
-            raise VaultError(f"템플릿을 찾을 수 없습니다: {template_name}")
-
-        tpl_content = tpl_file.read_text(encoding="utf-8")
-
-        # 간단한 변수 치환: {{variable_name}}
-        if variables:
-            for key, value in variables.items():
-                tpl_content = tpl_content.replace("{{" + key + "}}", str(value))
-
-        meta, body = parse_note(tpl_content)
-        return self.create_note(note_path, content=body, metadata=meta)
+        return self.create_note(
+            note_path, template_name=template_name, variables=variables,
+        )
 
     # ── Vault 정보 ────────────────────────────────────────
 
